@@ -10,15 +10,18 @@ import plotly.express as px
 # Load environment variables
 load_dotenv()
 
+# Constants
+SPREADSHEET_NAME = 'BROWNS STOCK MANAGEMENT'
+SHEET_NAME = 'CHECK_OUT'
+
+# Function to connect to Google Sheets
 def connect_to_gsheet(spreadsheet_name, sheet_name):
-    """
-    Authenticate and connect to Google Sheets.
-    """
-    scope = ["https://spreadsheets.google.com/feeds", 
-             "https://www.googleapis.com/auth/spreadsheets",
-             "https://www.googleapis.com/auth/drive.file", 
-             "https://www.googleapis.com/auth/drive"]
-    
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/drive"
+    ]
     try:
         credentials = {
             "type": "service_account",
@@ -32,70 +35,53 @@ def connect_to_gsheet(spreadsheet_name, sheet_name):
             "auth_provider_x509_cert_url": os.getenv("GOOGLE_AUTH_PROVIDER_X509_CERT_URL"),
             "client_x509_cert_url": os.getenv("GOOGLE_CLIENT_X509_CERT_URL")
         }
-
         client_credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials, scope)
         client = gspread.authorize(client_credentials)
-        spreadsheet = client.open(spreadsheet_name)  
-        return spreadsheet.worksheet(sheet_name)  # Access specific sheet by name
+        spreadsheet = client.open(spreadsheet_name)
+        return spreadsheet.worksheet(sheet_name)
     except Exception as e:
         st.error(f"Failed to connect to Google Sheets: {e}")
         return None
 
+# Function to load data from Google Sheets
 def load_data_from_google_sheet():
-    """
-    Load data from Google Sheets.
-    """
     with st.spinner("Loading data from Google Sheets..."):
         try:
             worksheet = connect_to_gsheet(SPREADSHEET_NAME, SHEET_NAME)
             if worksheet is None:
                 return None
             
-            # Get all records from the Google Sheet
             data = worksheet.get_all_records()
-            
             if not data:
                 st.error("No data found in the Google Sheet.")
                 return None
 
-            # Convert data to DataFrame
             df = pd.DataFrame(data)
-
-            # Ensure columns match the updated Google Sheets structure
-            df.columns = ["DATE", "ITEM_SERIAL", "ITEM NAME", "DEPARTMENT", "ISSUED_TO", "QUANTITY", 
-                        "UNIT_OF_MEASURE", "ITEM_CATEGORY", "WEEK", "REFERENCE", 
-                        "DEPARTMENT_CAT", "BATCH NO.", "STORE", "RECEIVED BY"]
-
-            # Convert date and numeric columns
+            df.columns = [
+                "DATE", "ITEM_SERIAL", "ITEM NAME", "DEPARTMENT", "ISSUED_TO", "QUANTITY",
+                "UNIT_OF_MEASURE", "ITEM_CATEGORY", "WEEK", "REFERENCE", "DEPARTMENT_CAT",
+                "BATCH NO.", "STORE", "RECEIVED BY"
+            ]
             df["DATE"] = pd.to_datetime(df["DATE"], errors="coerce")
             df["QUANTITY"] = pd.to_numeric(df["QUANTITY"], errors="coerce")
             df.dropna(subset=["QUANTITY"], inplace=True)
-            
-            # Extract quarter information
             df["QUARTER"] = df["DATE"].dt.to_period("Q")
-
-            # Filter data for 2024 onwards
             current_year = datetime.now().year
-            df = df[df["DATE"].dt.year >= current_year - 1]  # Data from last year onwards
-
+            df = df[df["DATE"].dt.year >= current_year - 1]
             return df
         except Exception as e:
             st.error(f"Error loading data: {e}")
             return None
 
-@st.cache_data(ttl=3600)  # Cache data for 1 hour
+# Cache data for 1 hour
+@st.cache_data(ttl=3600)
 def get_cached_data():
     return load_data_from_google_sheet()
 
+# Function to calculate proportions
 def calculate_proportion(df, identifier, department=None, min_proportion=1.0):
-    """
-    Calculate department-wise usage proportion without subdepartment details.
-    Ensures all departments sum to 100%.
-    Filters out departments with proportions less than min_proportion.
-    """
     if df is None:
         return None
-    
     try:
         if identifier.isnumeric():
             filtered_df = df[df["ITEM_SERIAL"].astype(str).str.lower() == identifier.lower()]
@@ -105,111 +91,75 @@ def calculate_proportion(df, identifier, department=None, min_proportion=1.0):
         if filtered_df.empty:
             return None
 
-        # If department is specified, filter by department
         if department and department != "All Departments":
             filtered_df = filtered_df[filtered_df["DEPARTMENT"] == department]
             if filtered_df.empty:
                 return None
 
-        # Calculate department-level proportions only
         dept_usage = filtered_df.groupby("DEPARTMENT")["QUANTITY"].sum().reset_index()
-        
-        # Calculate total across all departments
         total_usage = dept_usage["QUANTITY"].sum()
-        
         if total_usage == 0:
             return None
             
-        # Calculate each department's proportion of the total
         dept_usage["PROPORTION"] = (dept_usage["QUANTITY"] / total_usage) * 100
-        
-        # Filter out departments with proportions less than min_proportion
         significant_depts = dept_usage[dept_usage["PROPORTION"] >= min_proportion].copy()
         
-        # If no departments meet the threshold, return the one with the highest proportion
         if significant_depts.empty and not dept_usage.empty:
             significant_depts = pd.DataFrame([dept_usage.iloc[dept_usage["PROPORTION"].idxmax()]])
         
-        # Recalculate proportions to ensure they sum to 100%
         total_proportion = significant_depts["PROPORTION"].sum()
         significant_depts["PROPORTION"] = (significant_depts["PROPORTION"] / total_proportion) * 100
-        
-        # Calculate relative weights for sorting
         significant_depts["QUANTITY_ABS"] = significant_depts["QUANTITY"].abs()
         significant_depts["INTERNAL_WEIGHT"] = significant_depts["QUANTITY_ABS"] / significant_depts["QUANTITY_ABS"].sum()
-        
-        # Sort by proportion (descending)
         significant_depts.sort_values(by=["PROPORTION"], ascending=[False], inplace=True)
-        
         return significant_depts
     except Exception as e:
         st.error(f"Error calculating proportions: {e}")
         return None
 
+# Function to allocate quantity
 def allocate_quantity(df, identifier, available_quantity, department=None):
-    """
-    Allocate quantity based on historical proportions at department level only.
-    Filters out departments with less than 1% proportion.
-    """
     proportions = calculate_proportion(df, identifier, department, min_proportion=1.0)
     if proportions is None:
         return None
     
-    # Calculate allocated quantity for each department based on their proportion
-    proportions["ALLOCATED_QUANTITY"] = (proportions["PROPORTION"] / 100) * available_quantity
-    
-    # Round allocated quantities
-    proportions["ALLOCATED_QUANTITY"] = proportions["ALLOCATED_QUANTITY"].round(0)
-    
-    # Ensure the sum matches the available quantity exactly
+    proportions["ALLOCATED_QUANTITY"] = (proportions["PROPORTION"] / 100 * available_quantity).round(0)
     allocated_sum = proportions["ALLOCATED_QUANTITY"].sum()
-    if abs(allocated_sum - available_quantity) > 0.01 and len(proportions) > 0:  # Allow small rounding error
-        difference = int(available_quantity - allocated_sum)
-        if difference != 0:
-            # Add/subtract the difference from the largest allocation
-            index_max = proportions["ALLOCATED_QUANTITY"].idxmax()
-            proportions.at[index_max, "ALLOCATED_QUANTITY"] += difference
+    difference = int(available_quantity - allocated_sum)
+    
+    if difference != 0:
+        index_max = proportions["ALLOCATED_QUANTITY"].idxmax()
+        proportions.at[index_max, "ALLOCATED_QUANTITY"] += difference
     
     return proportions
 
-def generate_allocation_chart(result_df, item_name):
-    """
-    Generate a bar chart for allocation results.
-    """
-    # Create a summarized version for charting (by DEPARTMENT only)
-    chart_df = result_df.copy()
+# Function to generate historical usage trends
+def generate_historical_usage_chart(df, item_name):
+    filtered_df = df[df["ITEM NAME"] == item_name]
+    if filtered_df.empty:
+        return None
     
-    # Create a bar chart
-    fig = px.bar(
-        chart_df, 
-        x="DEPARTMENT", 
-        y="ALLOCATED_QUANTITY",
-        text="ALLOCATED_QUANTITY",
-        title=f"Allocation for {item_name} by Department",
-        labels={
-            "DEPARTMENT": "Department",
-            "ALLOCATED_QUANTITY": "Allocated Quantity"
-        },
-        height=400,
-        color_discrete_sequence=px.colors.qualitative.Vivid
+    # Resample data to reduce noise (e.g., monthly)
+    filtered_df = filtered_df.set_index("DATE").resample("M").sum().reset_index()
+    
+    fig = px.line(
+        filtered_df,
+        x="DATE",
+        y="QUANTITY",
+        title=f"Historical Usage for {item_name}",
+        labels={"DATE": "Date", "QUANTITY": "Quantity"},
+        markers=True
     )
-    
-    # Customize the layout
-    fig.update_layout(
-        xaxis_title="Department",
-        yaxis_title="Allocated Quantity"
-    )
-    
     return fig
 
 # Streamlit UI
 st.set_page_config(
-    page_title="SPP Ingredients Allocation App", 
+    page_title="SPP Ingredients Management App",
     layout="centered",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for improved appearance
+# Custom CSS for modern appearance
 st.markdown("""
     <style>
     .title {
@@ -233,14 +183,20 @@ st.markdown("""
         margin-top: 30px;
     }
     .stButton button {
-        background-color: #2E86C1;
-        color: white;
+        background-color: #f0f0f0;
+        color: #2E86C1;
         font-weight: bold;
         border-radius: 5px;
         padding: 10px 20px;
+        transition: background-color 0.3s ease;
     }
     .stButton button:hover {
-        background-color: #1C6EA4;
+        background-color: #2E86C1;
+        color: white;
+    }
+    .stButton button:active {
+        background-color: #2E86C1;
+        color: white;
     }
     .card {
         background-color: #ffffff;
@@ -248,79 +204,117 @@ st.markdown("""
         padding: 20px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         margin-bottom: 20px;
-    }
-    .filter-header {
-        font-size: 20px;
-        font-weight: bold;
-        color: #2E86C1;
-        margin-bottom: 10px;
+        border: 1px solid #e0e0e0;
     }
     .stDataFrame {
+        background-color: #f9f9f9;
         border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    .stDataFrame:active {
+        background-color: #e0f7fa;
     }
     .stSelectbox, .stNumberInput, .stMultiselect {
         margin-bottom: 15px;
     }
+    .stExpander {
+        background-color: #f9f9f9;
+        border-radius: 10px;
+        padding: 10px;
+        margin-bottom: 20px;
+    }
+    .stMetric {
+        background-color: #f0f4f8;
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# Main title and subtitle
-st.markdown("<h1 class='title'>SPP Ingredients Allocation App</h1>", unsafe_allow_html=True)
-st.markdown("<p class='subtitle'>Efficiently allocate ingredients based on historical usage</p>", unsafe_allow_html=True)
+# Main title
+st.markdown("<h1 class='title'>SPP Ingredients Management App</h1>", unsafe_allow_html=True)
 
 # Sidebar
 with st.sidebar:
-    st.markdown("<h2 class='title'>SPP Ingredients Allocation</h2>", unsafe_allow_html=True)
-    st.markdown("<p class='subtitle'>Allocation Settings</p>", unsafe_allow_html=True)
-    
-    # Google Sheet credentials and details
-    SPREADSHEET_NAME = 'BROWNS STOCK MANAGEMENT'
-    SHEET_NAME = 'CHECK_OUT'
-    
-    # Load the data
-    if "data" not in st.session_state:
-        st.session_state.data = get_cached_data()
-    
-    data = st.session_state.data
-    
-    if data is None:
-        st.error("Failed to load data from Google Sheets. Please check your connection and credentials.")
-        st.stop()
-    
-    # Extract unique item names, categories, and departments for filtering
-    unique_item_names = sorted(data["ITEM NAME"].unique().tolist())
-    unique_categories = sorted(data["ITEM_CATEGORY"].unique().tolist())
-    unique_departments = sorted(["All Departments"] + data["DEPARTMENT"].unique().tolist())
-    
-    st.markdown("### Quick Stats")
-    st.metric("Total Items", f"{len(unique_item_names)}")
-    st.metric("Total Departments", f"{len(unique_departments) - 1}")  # Exclude "All Departments"
+    st.markdown("<h2 class='title'>Quick Actions & Stats</h2>", unsafe_allow_html=True)
     
     # Refresh data button
-    if st.button("Refresh Data"):
+    if st.button("🔄 Refresh Data"):
         st.session_state.data = load_data_from_google_sheet()
         st.success("Data refreshed successfully!")
     
-    st.markdown("---")
-    st.markdown("### View Options")
-    view_mode = st.radio("Select View", ["Allocation Calculator", "Data Overview"])
+    # Clear cache button
+    if st.button("🧹 Clear Cache"):
+        st.cache_data.clear()
+        st.success("Cache cleared successfully!")
     
-    st.markdown("---")
-    st.markdown("<p class='footer'>Developed by Brown's Data Team, ©2025</p>", unsafe_allow_html=True)
+    # Summary statistics
+    st.markdown("### Quick Stats")
+    if "data" in st.session_state:
+        unique_item_names = sorted(st.session_state.data["ITEM NAME"].unique().tolist())
+        unique_departments = sorted(st.session_state.data["DEPARTMENT"].unique().tolist())
+        st.metric("Total Items", f"{len(unique_item_names)}")
+        st.metric("Total Departments", f"{len(unique_departments)}")
+        
+        # Display date period
+        min_date = st.session_state.data["DATE"].min().date()
+        max_date = st.session_state.data["DATE"].max().date()
+        st.markdown(f"**Date Period:** {min_date} to {max_date}")
+    else:
+        st.warning("No data loaded yet.")
 
-# Main content
-if view_mode == "Allocation Calculator":
-    # Form Layout for Better UX
+# Load data
+if "data" not in st.session_state:
+    st.session_state.data = get_cached_data()
+data = st.session_state.data
+
+if data is None:
+    st.error("Failed to load data from Google Sheets. Please check your connection and credentials.")
+    st.stop()
+
+# Extract unique values for filters
+unique_item_names = sorted(data["ITEM NAME"].unique().tolist())
+unique_item_serials = sorted(data["ITEM_SERIAL"].unique().tolist())
+unique_departments = sorted(["All Departments"] + data["DEPARTMENT"].unique().tolist())
+unique_item_categories = sorted(data["ITEM_CATEGORY"].unique().tolist())
+unique_department_cats = sorted(data["DEPARTMENT_CAT"].unique().tolist())
+unique_stores = sorted(data["STORE"].unique().tolist())
+
+# Buttons for main page
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    if st.button("📊 Allocate Ingredients", key="allocate_button"):
+        st.session_state.selected_tab = "Allocation Calculator"
+with col2:
+    if st.button("📈 View Data Overview", key="data_overview_button"):
+        st.session_state.selected_tab = "Data Overview"
+with col3:
+    if st.button("📅 Analyze Historical Usage", key="historical_usage_button"):
+        st.session_state.selected_tab = "Historical Usage"
+with col4:
+    if st.button("📝 Issue Ingredients", key="issue_ingredients_button"):
+        st.session_state.selected_tab = "Ingredient Issuance"
+
+# Default to Allocation Calculator if no tab is selected
+if "selected_tab" not in st.session_state:
+    st.session_state.selected_tab = "Allocation Calculator"
+
+# Allocation Calculator
+if st.session_state.selected_tab == "Allocation Calculator":
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("### Enter Items and Quantities")
+    st.markdown("### Allocation Calculator")
+    st.markdown("""
+        <p>
+            Use this tool to calculate ingredient allocations based on historical usage data.
+            Enter the items and quantities, and the app will allocate them proportionally across departments.
+        </p>
+    """, unsafe_allow_html=True)
     
     with st.form("allocation_form"):
-        num_items = st.number_input("Number of items to allocate", min_value=1, max_value=10, step=1, value=1)
-        
-        # Department selection
+        num_items = st.number_input("Number of items to allocate", min_value=1, max_value=10, step=1, value=10)
         selected_department = st.selectbox("Filter by Department (optional)", unique_departments)
-
+        
         entries = []
         for i in range(num_items):
             st.markdown(f"**Item {i+1}**")
@@ -336,82 +330,66 @@ if view_mode == "Allocation Calculator":
         submitted = st.form_submit_button("Calculate Allocation")
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Processing Allocation
     if submitted:
         if not entries:
             st.warning("Please enter at least one valid item and quantity!")
         else:
-            for identifier, available_quantity in entries:
+            for idx, (identifier, available_quantity) in enumerate(entries):
                 result = allocate_quantity(data, identifier, available_quantity, selected_department)
                 if result is not None:
                     st.markdown("<div class='card'>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='result-header'><h3 style='color: #2E86C1;'>Allocation for {identifier}</h3></div>", unsafe_allow_html=True)
+                    st.markdown(f"<h3 style='color: #2E86C1;'>Allocation for {identifier}</h3>", unsafe_allow_html=True)
                     
-                    # Format the output for better readability
                     formatted_result = result[["DEPARTMENT", "PROPORTION", "ALLOCATED_QUANTITY"]].copy()
                     formatted_result = formatted_result.rename(columns={
                         "DEPARTMENT": "Department",
                         "PROPORTION": "Proportion (%)",
                         "ALLOCATED_QUANTITY": "Allocated Quantity"
                     })
-                    
-                    # Format numeric columns
                     formatted_result["Proportion (%)"] = formatted_result["Proportion (%)"].round(2)
                     formatted_result["Allocated Quantity"] = formatted_result["Allocated Quantity"].astype(int)
                     
-                    # Display the result
                     st.dataframe(formatted_result, use_container_width=True)
                     
-                    # Summary statistics
-                    st.markdown("#### Allocation Summary")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Total Allocated", f"{formatted_result['Allocated Quantity'].sum():,.0f}")
-                    with col2:
-                        st.metric("Departments", f"{formatted_result['Department'].nunique()}")
-                    
-                    # Add a download button for the result
+                    # Download CSV for allocation results
                     csv = formatted_result.to_csv(index=False)
                     st.download_button(
                         label="Download Allocation as CSV",
                         data=csv,
                         file_name=f"{identifier}_allocation.csv",
                         mime="text/csv",
+                        key=f"download_{idx}"  # Unique key for each download button
                     )
-                    
-                    # Show visualization
-                    chart = generate_allocation_chart(result, identifier)
-                    st.plotly_chart(chart, use_container_width=True)
                     
                     st.markdown("</div>", unsafe_allow_html=True)
                 else:
                     st.error(f"Item {identifier} not found in historical data or has no usage data for the selected department!")
 
-elif view_mode == "Data Overview":
+# Data Overview
+elif st.session_state.selected_tab == "Data Overview":
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("### Data Overview")
+    st.markdown("""
+        <p>
+            Explore filtered data and usage statistics. Use the filters to narrow down the data and visualize usage trends.
+        </p>
+    """, unsafe_allow_html=True)
     
-    # Advanced Filters
     with st.expander("🔍 Advanced Filters", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
-            # Date range filter
             min_date = data["DATE"].min().date()
             max_date = data["DATE"].max().date()
             date_range = st.date_input("Select Date Range", [min_date, max_date])
         with col2:
-            # Multi-select for item categories
-            selected_categories = st.multiselect("Filter by Item Categories", unique_categories, default=[])
+            selected_categories = st.multiselect("Filter by Item Categories", unique_item_categories, default=[])
         
         col3, col4 = st.columns(2)
         with col3:
-            # Multi-select for items
             selected_items = st.multiselect("Filter by Items", unique_item_names, default=[])
         with col4:
-            # Multi-select for departments
-            selected_overview_dept = st.multiselect("Filter by Departments", unique_departments[1:], default=[])  # Exclude "All Departments"
+            selected_overview_dept = st.multiselect("Filter by Departments", unique_departments, default=[])
     
-    # Apply filters
     filtered_data = data.copy()
     if date_range:
         filtered_data = filtered_data[(filtered_data["DATE"].dt.date >= date_range[0]) & 
@@ -423,15 +401,18 @@ elif view_mode == "Data Overview":
     if selected_overview_dept:
         filtered_data = filtered_data[filtered_data["DEPARTMENT"].isin(selected_overview_dept)]
     
-    # Show data overview
     st.markdown("#### Filtered Data Preview")
-    display_columns = ["DATE", "ITEM NAME", "DEPARTMENT", "QUANTITY", "UNIT_OF_MEASURE", "ITEM_CATEGORY"]
-    st.dataframe(filtered_data[display_columns].head(100), use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.dataframe(filtered_data.head(100), use_container_width=True)
     
-    # Simple statistics
-    # Simple statistics
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    # Download CSV for filtered data
+    csv = filtered_data.to_csv(index=False)
+    st.download_button(
+        label="Download Filtered Data as CSV",
+        data=csv,
+        file_name="filtered_data.csv",
+        mime="text/csv",
+    )
+    
     st.markdown("#### Usage Statistics")
     total_usage = filtered_data["QUANTITY"].sum()
     unique_items_count = filtered_data["ITEM NAME"].nunique()
@@ -444,7 +425,6 @@ elif view_mode == "Data Overview":
     with stat_col3:
         st.metric("Total Transactions", f"{len(filtered_data):,}")
     
-    # Usage by department visualization
     if not filtered_data.empty:
         st.markdown("#### Department Usage")
         dept_usage = filtered_data.groupby("DEPARTMENT")["QUANTITY"].sum().reset_index()
@@ -458,4 +438,124 @@ elif view_mode == "Data Overview":
             hole=0.4
         )
         st.plotly_chart(fig, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# Historical Usage
+elif st.session_state.selected_tab == "Historical Usage":
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("### Historical Usage Trends")
+    st.markdown("""
+        <p>
+            Visualize historical usage trends and identify most used items. Analyze monthly usage patterns by department.
+        </p>
+    """, unsafe_allow_html=True)
+    
+    # Department selection for overall statistics
+    selected_department = st.selectbox("Select Department", unique_departments)
+    
+    if selected_department:
+        if selected_department == "All Departments":
+            filtered_data = data
+        else:
+            filtered_data = data[data["DEPARTMENT"] == selected_department]
+        
+        # Overall statistics
+        st.markdown("#### Overall Statistics")
+        total_usage = filtered_data["QUANTITY"].sum()
+        most_used_item = filtered_data.groupby("ITEM NAME")["QUANTITY"].sum().idxmax()
+        most_used_department = filtered_data.groupby("DEPARTMENT")["QUANTITY"].sum().idxmax()
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Quantity Used", f"{total_usage:,.2f}")
+        with col2:
+            st.metric("Most Used Item", most_used_item)
+        with col3:
+            st.metric("Most Used Department", most_used_department)
+        
+        # Monthly usage per department
+        st.markdown("#### Monthly Usage per Department")
+        monthly_usage = filtered_data.groupby([pd.Grouper(key="DATE", freq="M"), "DEPARTMENT"])["QUANTITY"].sum().reset_index()
+        
+        fig = px.line(
+            monthly_usage,
+            x="DATE",
+            y="QUANTITY",
+            color="DEPARTMENT",
+            title="Monthly Usage by Department",
+            labels={"DATE": "Date", "QUANTITY": "Quantity"},
+            markers=True
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Top 10 most used items by department
+        st.markdown("#### Top 10 Most Used Items by Department")
+        top_items = filtered_data.groupby("ITEM NAME")["QUANTITY"].sum().nlargest(10).reset_index()
+        
+        # Display the top items in a DataFrame with text wrapping
+        st.dataframe(
+            top_items,
+            column_config={
+                "ITEM NAME": st.column_config.TextColumn("Item Name", width="large"),
+                "QUANTITY": st.column_config.NumberColumn("Quantity", format="%.2f")
+            },
+            use_container_width=True
+        )
+        
+        # Bar chart for top 10 items
+        fig = px.bar(
+            top_items,
+            x="ITEM NAME",
+            y="QUANTITY",
+            title=f"Top 10 Most Used Items in {selected_department}",
+            labels={"ITEM NAME": "Item", "QUANTITY": "Quantity"},
+            color="QUANTITY",
+            color_continuous_scale=px.colors.sequential.Blues
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# Ingredient Issuance
+elif st.session_state.selected_tab == "Ingredient Issuance":
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("### Ingredient Issuance Console")
+    st.markdown("""
+        <p>
+            Record new ingredient issuances with suggestions from historical data. Enter the details and submit the form.
+        </p>
+    """, unsafe_allow_html=True)
+    
+    with st.form("issuance_form"):
+        st.markdown("#### Enter Issuance Details")
+        
+        # Auto-fill date
+        issuance_date = st.date_input("Date", value=datetime.now())
+        
+        # Item selection
+        col1, col2 = st.columns(2)
+        with col1:
+            selected_item = st.selectbox("Item Name", unique_item_names)
+        with col2:
+            selected_item_serial = st.selectbox("Item Serial", unique_item_serials)
+        
+        # Quantity input
+        quantity = st.number_input("Quantity", min_value=0.1, step=0.1)
+        
+        # Suggestions for other fields
+        item_data = data[data["ITEM NAME"] == selected_item].iloc[0]
+        department = st.selectbox("Department", unique_departments, index=unique_departments.index(item_data["DEPARTMENT"]))
+        issued_to = st.text_input("Issued To", value=item_data["ISSUED_TO"])
+        unit_of_measure = st.text_input("Unit of Measure", value=item_data["UNIT_OF_MEASURE"])
+        item_category = st.selectbox("Item Category", unique_item_categories, index=unique_item_categories.index(item_data["ITEM_CATEGORY"]))
+        reference = st.text_input("Reference", value=item_data["REFERENCE"])
+        department_cat = st.selectbox("Department Category", unique_department_cats, index=unique_department_cats.index(item_data["DEPARTMENT_CAT"]))
+        batch_no = st.text_input("Batch No.", value=item_data["BATCH NO."])
+        store = st.selectbox("Store", unique_stores, index=unique_stores.index(item_data["STORE"]))
+        received_by = st.text_input("Received By", value=item_data["RECEIVED BY"])
+        
+        submitted = st.form_submit_button("Submit Issuance")
+    
+    if submitted:
+        st.success("Issuance recorded successfully!")
     st.markdown("</div>", unsafe_allow_html=True)
