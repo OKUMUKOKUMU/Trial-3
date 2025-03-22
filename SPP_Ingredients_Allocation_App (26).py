@@ -159,14 +159,21 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Add Font Awesome for icons
+st.markdown(
+    '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">',
+    unsafe_allow_html=True,
+)
+
 # Custom CSS for modern appearance
 st.markdown("""
     <style>
+    /* General Styling */
     .title {
         text-align: center;
         font-size: 36px;
         font-weight: bold;
-        color: #2E86C1;
+        color: #2E86C1; /* Primary color */
         font-family: 'Arial', sans-serif;
         margin-bottom: 10px;
     }
@@ -182,22 +189,24 @@ st.markdown("""
         color: #888888;
         margin-top: 30px;
     }
+    /* Button Styling */
     .stButton button {
-        background-color: #f0f0f0;
-        color: #2E86C1;
+        background-color: #FFD700; /* Gold for bakery theme */
+        color: #2E86C1; /* Primary color */
         font-weight: bold;
         border-radius: 5px;
         padding: 10px 20px;
         transition: background-color 0.3s ease;
     }
     .stButton button:hover {
-        background-color: #2E86C1;
+        background-color: #2E86C1; /* Primary color */
         color: white;
     }
     .stButton button:active {
-        background-color: #2E86C1;
+        background-color: #2E86C1; /* Primary color */
         color: white;
     }
+    /* Card Styling */
     .card {
         background-color: #ffffff;
         border-radius: 10px;
@@ -206,6 +215,7 @@ st.markdown("""
         margin-bottom: 20px;
         border: 1px solid #e0e0e0;
     }
+    /* Data Frame Styling */
     .stDataFrame {
         background-color: #f9f9f9;
         border-radius: 10px;
@@ -214,30 +224,72 @@ st.markdown("""
     .stDataFrame:active {
         background-color: #e0f7fa;
     }
+    /* Input Styling */
     .stSelectbox, .stNumberInput, .stMultiselect {
         margin-bottom: 15px;
     }
+    /* Expander Styling */
     .stExpander {
         background-color: #f9f9f9;
         border-radius: 10px;
         padding: 10px;
         margin-bottom: 20px;
     }
+    /* Metric Styling */
     .stMetric {
         background-color: #f0f4f8;
         border-radius: 10px;
         padding: 15px;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
+    /* Product-Specific Icons */
+    .product-icon {
+        font-size: 24px;
+        margin-right: 10px;
+    }
+    /* Header Gradient */
+    .header {
+        background: linear-gradient(90deg, #FFD700, #FFA07A); /* Gold to Light Salmon */
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# Main title
-st.markdown("<h1 class='title'>SPP Ingredients Management App</h1>", unsafe_allow_html=True)
+# Main title with icons and tagline
+st.markdown("""
+    <div class="header">
+        <h1 class='title'>
+            <i class="fas fa-ice-cream product-icon"></i>
+            <i class="fas fa-bread-slice product-icon"></i>
+            <i class="fas fa-cheese product-icon"></i>
+            <i class="fas fa-glass-whiskey product-icon"></i>
+            SPP Ingredients Management App
+        </h1>
+        <p class='subtitle'>
+            Managing ingredients for ice cream, bakery, cheese, yogurt, and milk production.
+        </p>
+    </div>
+""", unsafe_allow_html=True)
 
 # Sidebar
 with st.sidebar:
-    st.markdown("<h2 class='title'>Quick Actions & Stats</h2>", unsafe_allow_html=True)
+    st.markdown("""
+        <h2 class='title'>
+            <i class="fas fa-cogs product-icon"></i>
+            Quick Actions & Stats
+        </h2>
+        <p>
+            Manage your ingredients for:
+            <ul>
+                <li><i class="fas fa-ice-cream product-icon"></i> Ice Cream</li>
+                <li><i class="fas fa-bread-slice product-icon"></i> Bakery</li>
+                <li><i class="fas fa-cheese product-icon"></i> Cheese</li>
+                <li><i class="fas fa-glass-whiskey product-icon"></i> Yogurt & Milk</li>
+            </ul>
+        </p>
+    """, unsafe_allow_html=True)
     
     # Refresh data button
     if st.button("🔄 Refresh Data"):
@@ -559,3 +611,10 @@ elif st.session_state.selected_tab == "Ingredient Issuance":
     if submitted:
         st.success("Issuance recorded successfully!")
     st.markdown("</div>", unsafe_allow_html=True)
+
+# Footer with branding
+st.markdown("""
+    <div class="footer">
+        <p>© 2023 SPP Ingredients. Crafting delicious moments since 2023.</p>
+    </div>
+""", unsafe_allow_html=True)
