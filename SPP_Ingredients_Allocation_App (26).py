@@ -249,7 +249,7 @@ st.markdown("""
     }
     /* Header Gradient */
     .header {
-        background: linear-gradient(90deg, #FFD700, #FFA07A, #F4D03F); /* Gold, Light Salmon, Soft Yellow */
+        background: linear-gradient(90deg, #FFD700, #FFA07A); /* Gold to Light Salmon */
         padding: 20px;
         border-radius: 10px;
         margin-bottom: 20px;
@@ -261,10 +261,10 @@ st.markdown("""
 st.markdown("""
     <div class="header">
         <h1 class='title'>
-            <i class="fas fa-ice-cream product-icon" style="color: #A2D9CE;"></i> <!-- Soft Mint for Ice Cream -->
-            <i class="fas fa-bread-slice product-icon" style="color: #D2B48C;"></i> <!-- Tan for Bakery -->
-            <i class="fas fa-cheese product-icon" style="color: #F4D03F;"></i> <!-- Soft Yellow for Cheese -->
-            <i class="fas fa-glass-whiskey product-icon" style="color: #AED6F1;"></i> <!-- Light Blue for Yogurt & Milk -->
+            <i class="fas fa-ice-cream product-icon"></i>
+            <i class="fas fa-bread-slice product-icon"></i>
+            <i class="fas fa-cheese product-icon"></i>
+            <i class="fas fa-glass-whiskey product-icon"></i>
             SPP Ingredients Management App
         </h1>
         <p class='subtitle'>
@@ -283,10 +283,10 @@ with st.sidebar:
         <p>
             Manage your ingredients for:
             <ul>
-                <li><i class="fas fa-ice-cream product-icon" style="color: #A2D9CE;"></i> Ice Cream</li>
-                <li><i class="fas fa-bread-slice product-icon" style="color: #D2B48C;"></i> Bakery</li>
-                <li><i class="fas fa-cheese product-icon" style="color: #F4D03F;"></i> Cheese</li>
-                <li><i class="fas fa-glass-whiskey product-icon" style="color: #AED6F1;"></i> Yogurt & Milk</li>
+                <li><i class="fas fa-ice-cream product-icon"></i> Ice Cream</li>
+                <li><i class="fas fa-bread-slice product-icon"></i> Bakery</li>
+                <li><i class="fas fa-cheese product-icon"></i> Cheese</li>
+                <li><i class="fas fa-glass-whiskey product-icon"></i> Yogurt & Milk</li>
             </ul>
         </p>
     """, unsafe_allow_html=True)
@@ -615,6 +615,6 @@ elif st.session_state.selected_tab == "Ingredient Issuance":
 # Footer with branding
 st.markdown("""
     <div class="footer">
-        <p>© 2023 SPP Ingredients. Crafting delicious moments since 2023.</p>
+        <p>© 2025 SPP Ingredients. Crafting delicious moments since 1979.</p>
     </div>
 """, unsafe_allow_html=True)
