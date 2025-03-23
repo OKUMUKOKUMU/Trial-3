@@ -249,7 +249,7 @@ st.markdown("""
     }
     /* Header Gradient */
     .header {
-        background: linear-gradient(90deg, #FFD700, #FFA07A); /* Gold to Light Salmon */
+        background: linear-gradient(90deg, #FFD700, #FFA07A, #F4D03F); /* Gold, Light Salmon, Soft Yellow */
         padding: 20px;
         border-radius: 10px;
         margin-bottom: 20px;
@@ -261,10 +261,10 @@ st.markdown("""
 st.markdown("""
     <div class="header">
         <h1 class='title'>
-            <i class="fas fa-ice-cream product-icon"></i>
-            <i class="fas fa-bread-slice product-icon"></i>
-            <i class="fas fa-cheese product-icon"></i>
-            <i class="fas fa-glass-whiskey product-icon"></i>
+            <i class="fas fa-ice-cream product-icon" style="color: #A2D9CE;"></i> <!-- Soft Mint for Ice Cream -->
+            <i class="fas fa-bread-slice product-icon" style="color: #D2B48C;"></i> <!-- Tan for Bakery -->
+            <i class="fas fa-cheese product-icon" style="color: #F4D03F;"></i> <!-- Soft Yellow for Cheese -->
+            <i class="fas fa-glass-whiskey product-icon" style="color: #AED6F1;"></i> <!-- Light Blue for Yogurt & Milk -->
             SPP Ingredients Management App
         </h1>
         <p class='subtitle'>
@@ -283,10 +283,10 @@ with st.sidebar:
         <p>
             Manage your ingredients for:
             <ul>
-                <li><i class="fas fa-ice-cream product-icon"></i> Ice Cream</li>
-                <li><i class="fas fa-bread-slice product-icon"></i> Bakery</li>
-                <li><i class="fas fa-cheese product-icon"></i> Cheese</li>
-                <li><i class="fas fa-glass-whiskey product-icon"></i> Yogurt & Milk</li>
+                <li><i class="fas fa-ice-cream product-icon" style="color: #A2D9CE;"></i> Ice Cream</li>
+                <li><i class="fas fa-bread-slice product-icon" style="color: #D2B48C;"></i> Bakery</li>
+                <li><i class="fas fa-cheese product-icon" style="color: #F4D03F;"></i> Cheese</li>
+                <li><i class="fas fa-glass-whiskey product-icon" style="color: #AED6F1;"></i> Yogurt & Milk</li>
             </ul>
         </p>
     """, unsafe_allow_html=True)
@@ -364,7 +364,7 @@ if st.session_state.selected_tab == "Allocation Calculator":
     """, unsafe_allow_html=True)
     
     with st.form("allocation_form"):
-        num_items = st.number_input("Number of items to allocate", min_value=1, max_value=10, step=1, value=10)
+        num_items = st.number_input("Number of items to allocate", min_value=1, max_value=10, step=1, value=1)
         selected_department = st.selectbox("Filter by Department (optional)", unique_departments)
         
         entries = []
